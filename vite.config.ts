@@ -8,6 +8,10 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       host: '0.0.0.0',
+      proxy: {
+        // Forward API calls to the local Node server in development
+        '/api': 'http://localhost:8080',
+      },
     },
     preview: {
       // Allow Cloud Run's *.run.app hosts
@@ -15,8 +19,10 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [react()],
     define: {
-      'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      // Only expose non-sensitive values to the client.
+      'import.meta.env.VITE_API_BASE_URL': JSON.stringify(
+        env.VITE_API_BASE_URL || ''
+      ),
     },
     resolve: {
       alias: {

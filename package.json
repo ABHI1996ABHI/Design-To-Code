@@ -6,7 +6,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "npm run build && vite preview --host 0.0.0.0 --port ${PORT:-8080}"
+    "start": "npm run build && node server/index.js",
+    "server": "node server/index.js",
+    "build:extension": "npm run build && node scripts/build-extension.mjs"
   },
   "engines": {
     "node": ">=18"
