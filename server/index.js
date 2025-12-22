@@ -1,9 +1,36 @@
 import express from 'express';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Lightweight .env loader (avoids external dependency)
+const rootDir = path.resolve(__dirname, '..');
+const envPath = path.join(rootDir, '.env');
+
+if (fs.existsSync(envPath)) {
+  try {
+    const envContent = fs.readFileSync(envPath, 'utf-8');
+    envContent.split('\n').forEach((line) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) return;
+      const eqIndex = trimmed.indexOf('=');
+      if (eqIndex === -1) return;
+      const key = trimmed.slice(0, eqIndex).trim();
+      const value = trimmed
+        .slice(eqIndex + 1)
+        .trim()
+        .replace(/^['"]|['"]$/g, '');
+      if (!process.env[key]) {
+        process.env[key] = value;
+      }
+    });
+  } catch (err) {
+    console.warn('Failed to load .env file:', err);
+  }
+}
 
 const app = express();
 const port = process.env.PORT || 8080;
@@ -74,16 +101,17 @@ Update the current code based on this guidance. Maintain the 1350px width and sp
           generationConfig: {
             temperature: 0.1,
             maxOutputTokens: 30000,
-          },
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: 'object',
-            properties: {
-              html: { type: 'string' },
-              css: { type: 'string' },
-              javascript: { type: 'string' },
+            // Gemini REST API expects snake_case for these fields
+            response_mime_type: 'application/json',
+            response_schema: {
+              type: 'object',
+              properties: {
+                html: { type: 'string' },
+                css: { type: 'string' },
+                javascript: { type: 'string' },
+              },
+              required: ['html', 'css', 'javascript'],
             },
-            required: ['html', 'css', 'javascript'],
           },
         }),
       }
@@ -141,4 +169,3 @@ app.get('*', (_req, res) => {
 app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
 });
-
