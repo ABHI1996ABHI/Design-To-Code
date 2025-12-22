@@ -511,7 +511,7 @@ const App: React.FC = () => {
                           <img src={uploadedFile.previewUrl} className="max-w-full max-h-full object-contain rounded-xl" alt="Preview" />
                           {(status === AppStatus.ANALYZING || status === AppStatus.ERROR) && (
                             <div className="absolute inset-0 glass bg-slate-950/80 z-30 flex flex-col items-center justify-center p-6 text-white text-center">
-                              <TechnicalTerminal isError={status === AppStatus.ERROR} />
+                              <TechnicalTerminal isError={status === AppStatus.ERROR} errorMessage={errorMessage || undefined} />
                               {status === AppStatus.ERROR && (
                                 <button onClick={() => handleGenerate(false)} className="mt-8 px-6 py-2 bg-indigo-600 rounded-lg text-[10px] font-bold uppercase">Retry</button>
                               )}

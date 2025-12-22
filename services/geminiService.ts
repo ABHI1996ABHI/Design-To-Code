@@ -3,17 +3,36 @@ import { GEMINI_MODEL_VISION, SYSTEM_PROMPT } from '../constants';
 import { GeneratedCode } from '../types';
 
 async function optimizeImage(base64: string): Promise<string> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');
       let width = img.width;
       let height = img.height;
-      const MAX_WIDTH = 1600;
+      
+      // More aggressive size limits to reduce token usage
+      const MAX_WIDTH = 1200;
+      const MAX_HEIGHT = 1600;
+      const MAX_AREA = 1920000; // 1200 * 1600
+      
+      // Calculate scaling to fit within max dimensions
+      const currentArea = width * height;
+      if (currentArea > MAX_AREA) {
+        const scale = Math.sqrt(MAX_AREA / currentArea);
+        width = Math.floor(width * scale);
+        height = Math.floor(height * scale);
+      }
+      
+      // Ensure width and height don't exceed individual limits
       if (width > MAX_WIDTH) {
         height = (MAX_WIDTH / width) * height;
         width = MAX_WIDTH;
       }
+      if (height > MAX_HEIGHT) {
+        width = (MAX_HEIGHT / height) * width;
+        height = MAX_HEIGHT;
+      }
+      
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext('2d');
@@ -22,8 +41,39 @@ async function optimizeImage(base64: string): Promise<string> {
         ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
       }
-      resolve(canvas.toDataURL('image/jpeg', 0.8));
+      
+      // Try progressively lower quality until we get under size limit
+      let quality = 0.7;
+      let dataUrl = canvas.toDataURL('image/jpeg', quality);
+      let base64Size = dataUrl.length;
+      
+      // Target: keep base64 size under ~1.5MB (Gemini has input token limits)
+      const MAX_BASE64_SIZE = 1500000;
+      
+      while (base64Size > MAX_BASE64_SIZE && quality > 0.3) {
+        quality -= 0.1;
+        dataUrl = canvas.toDataURL('image/jpeg', quality);
+        base64Size = dataUrl.length;
+      }
+      
+      // If still too large, reduce dimensions further
+      if (base64Size > MAX_BASE64_SIZE) {
+        const reductionFactor = Math.sqrt(MAX_BASE64_SIZE / base64Size);
+        width = Math.floor(width * reductionFactor);
+        height = Math.floor(height * reductionFactor);
+        canvas.width = width;
+        canvas.height = height;
+        if (ctx) {
+          ctx.fillStyle = 'white';
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+        }
+        dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+      }
+      
+      resolve(dataUrl);
     };
+    img.onerror = () => reject(new Error('Failed to load image for optimization'));
     img.src = base64;
   });
 }
@@ -42,6 +92,17 @@ export const generateCodeFromDesign = async (
 ): Promise<GeneratedCode> => {
   try {
     const optimizedBase64 = await optimizeImage(base64Image);
+    
+    // Validate optimized image size (base64 is ~33% larger than binary)
+    const base64Size = optimizedBase64.length;
+    const MAX_BASE64_SIZE = 2000000; // ~1.5MB binary = ~2MB base64
+    
+    if (base64Size > MAX_BASE64_SIZE) {
+      throw new Error(
+        `Image is too large (${Math.round(base64Size / 1024)}KB) even after optimization. ` +
+        `Please use a smaller image or simpler design. Maximum recommended size: ${Math.round(MAX_BASE64_SIZE / 1024)}KB.`
+      );
+    }
 
     const response = await fetch(`${getApiBase()}/api/generate-code`, {
       method: 'POST',
@@ -58,9 +119,40 @@ export const generateCodeFromDesign = async (
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
+      let errorText = await response.text();
+      let errorDetails: any = {};
+      
+      try {
+        errorDetails = JSON.parse(errorText);
+      } catch {
+        // If not JSON, use the text as-is
+      }
+      
+      // Extract meaningful error message from Gemini API response
+      // Gemini API errors can be nested in different structures
+      const geminiError = 
+        errorDetails?.error?.message || 
+        errorDetails?.error?.status || 
+        errorDetails?.message ||
+        errorDetails?.details || 
+        errorText;
+      
+      // Check for specific token-related errors
+      const errorLower = String(geminiError).toLowerCase();
+      if (errorLower.includes('token') || 
+          errorLower.includes('too large') || 
+          errorLower.includes('quota') ||
+          errorLower.includes('exceeded') ||
+          errorLower.includes('limit')) {
+        throw new Error(
+          `Image too large for processing. The design is too complex for the current token budget. ` +
+          `Please try a smaller image, simpler design, or reduce the image resolution. ` +
+          `Error details: ${geminiError}`
+        );
+      }
+      
       throw new Error(
-        `Backend error (${response.status} ${response.statusText}): ${errorText}`
+        `Backend error (${response.status} ${response.statusText}): ${geminiError}`
       );
     }
 

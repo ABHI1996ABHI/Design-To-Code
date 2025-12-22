@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 
 interface TechnicalTerminalProps {
   isError?: boolean;
+  errorMessage?: string;
 }
 
 const LOG_MESSAGES = [
@@ -31,13 +32,14 @@ const THINKING_SNIPPETS = [
   "transition-all duration-700 ease-in-out",
 ];
 
-export const TechnicalTerminal: React.FC<TechnicalTerminalProps> = ({ isError }) => {
+export const TechnicalTerminal: React.FC<TechnicalTerminalProps> = ({ isError, errorMessage }) => {
   const [logs, setLogs] = useState<string[]>([]);
   const [thought, setThought] = useState("");
 
   useEffect(() => {
     if (isError) {
-      setLogs(prev => [...prev, "ERROR: Design too complex for current token budget."]);
+      const errorMsg = errorMessage || "Design too complex for current token budget.";
+      setLogs(prev => [...prev, `ERROR: ${errorMsg}`]);
       return;
     }
 

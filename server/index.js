@@ -92,10 +92,23 @@ Update the current code based on this guidance. Maintain the 1350px width and sp
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Gemini API error:', response.status, response.statusText, errorText);
+      
+      let errorDetails = errorText;
+      let errorMessage = errorText;
+      try {
+        const parsed = JSON.parse(errorText);
+        // Gemini API error structure: { error: { message: "...", status: "..." } }
+        errorDetails = parsed.error?.message || parsed.error?.status || parsed.message || errorText;
+        errorMessage = parsed.error?.message || parsed.message || errorText;
+      } catch {
+        // Keep original errorText if not JSON
+      }
+      
       return res.status(502).json({
         error: 'Gemini API error',
         status: response.status,
-        details: errorText,
+        details: errorDetails,
+        message: errorMessage,
       });
     }
 
