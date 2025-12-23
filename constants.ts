@@ -1,5 +1,7 @@
 
-export const GEMINI_MODEL_VISION = 'gemini-3-pro-preview';
+// Default OpenRouter model (vision capable). Alias kept for backward compatibility.
+export const OPENROUTER_MODEL_VISION = 'openai/gpt-4o-mini';
+export const GEMINI_MODEL_VISION = OPENROUTER_MODEL_VISION;
 export const MAX_FILE_SIZE_MB = 100; 
 export const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', '.psd', '.fig'];
 

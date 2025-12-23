@@ -35,11 +35,11 @@ if (fs.existsSync(envPath)) {
 const app = express();
 const port = process.env.PORT || 8080;
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.API_KEY;
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || process.env.API_KEY;
 
-if (!GEMINI_API_KEY) {
+if (!OPENROUTER_API_KEY) {
   console.warn(
-    '[WARN] GEMINI_API_KEY is not set. /api/generate-code requests will fail until it is configured.'
+    '[WARN] OPENROUTER_API_KEY is not set. /api/generate-code requests will fail until it is configured.'
   );
 }
 
@@ -47,8 +47,8 @@ app.use(express.json({ limit: '10mb' }));
 
 app.post('/api/generate-code', async (req, res) => {
   try {
-    if (!GEMINI_API_KEY) {
-      return res.status(500).json({ error: 'GEMINI_API_KEY is not configured on the server.' });
+    if (!OPENROUTER_API_KEY) {
+      return res.status(500).json({ error: 'OPENROUTER_API_KEY is not configured on the server.' });
     }
 
     const { base64Image, userGuidance = '', previousCode = null, model, systemPrompt } = req.body;
@@ -58,7 +58,7 @@ app.post('/api/generate-code', async (req, res) => {
     }
 
     const mimeType = 'image/jpeg';
-    const GEMINI_MODEL_VISION = model || 'gemini-3-pro-preview';
+    const MODEL = model || 'openai/gpt-4o-mini';
     const SYSTEM_PROMPT =
       systemPrompt ||
       'You are a world-class Lead Frontend Engineer. Return JSON with html, css, javascript.';
@@ -81,59 +81,56 @@ Update the current code based on this guidance. Maintain the 1350px width and sp
     }
 
     const base64Data = base64Image.split(',')[1] || base64Image;
+    const normalizedImage =
+      base64Image.startsWith('data:') ? base64Image : `data:${mimeType};base64,${base64Data}`;
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_VISION}:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: promptText },
-                { inlineData: { mimeType, data: base64Data } },
-              ],
-            },
-          ],
-          generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 30000,
-            // Gemini REST API expects snake_case for these fields
-            response_mime_type: 'application/json',
-            response_schema: {
-              type: 'object',
-              properties: {
-                html: { type: 'string' },
-                css: { type: 'string' },
-                javascript: { type: 'string' },
-              },
-              required: ['html', 'css', 'javascript'],
-            },
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+        'HTTP-Referer': process.env.OPENROUTER_REFERRER || 'http://localhost:3000',
+        'X-Title': process.env.OPENROUTER_TITLE || 'Design-To-Code',
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        temperature: 0.1,
+        max_tokens: 6000,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: promptText },
+              { type: 'image_url', image_url: { url: normalizedImage } },
+            ],
           },
-        }),
-      }
-    );
+        ],
+      }),
+    });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Gemini API error:', response.status, response.statusText, errorText);
+      console.error('OpenRouter API error:', response.status, response.statusText, errorText);
       
       let errorDetails = errorText;
       let errorMessage = errorText;
       try {
         const parsed = JSON.parse(errorText);
-        // Gemini API error structure: { error: { message: "...", status: "..." } }
-        errorDetails = parsed.error?.message || parsed.error?.status || parsed.message || errorText;
+        errorDetails =
+          parsed.error?.message ||
+          parsed.error ||
+          parsed.message ||
+          parsed?.data ||
+          errorText;
         errorMessage = parsed.error?.message || parsed.message || errorText;
       } catch {
         // Keep original errorText if not JSON
       }
       
       return res.status(502).json({
-        error: 'Gemini API error',
+        error: 'OpenRouter API error',
         status: response.status,
         details: errorDetails,
         message: errorMessage,
@@ -141,20 +138,38 @@ Update the current code based on this guidance. Maintain the 1350px width and sp
     }
 
     const data = await response.json();
-    const text =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text ??
-      data?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data ??
-      null;
+    const messageContent = data?.choices?.[0]?.message?.content;
 
-    if (!text) {
-      console.error('Unexpected Gemini response format:', JSON.stringify(data));
-      return res.status(502).json({ error: 'Empty or unexpected Gemini response format.' });
+    let text = '';
+    if (typeof messageContent === 'string') {
+      text = messageContent;
+    } else if (Array.isArray(messageContent)) {
+      text = messageContent.find((part) => part?.type === 'text')?.text || '';
+    } else if (messageContent?.text) {
+      text = messageContent.text;
     }
 
-    res.json(JSON.parse(text));
+    if (!text) {
+      console.error('Unexpected OpenRouter response format:', JSON.stringify(data));
+      return res.status(502).json({ error: 'Empty or unexpected OpenRouter response format.' });
+    }
+
+    let parsedJson;
+    try {
+      parsedJson = JSON.parse(text);
+    } catch (err) {
+      console.error('Failed to parse OpenRouter response text:', text);
+      return res.status(502).json({ error: 'Unable to parse OpenRouter JSON response.' });
+    }
+
+    res.json(parsedJson);
   } catch (err) {
     console.error('Error in /api/generate-code:', err);
-    res.status(500).json({ error: 'Internal server error.' });
+    res.status(500).json({
+      error: 'Internal server error.',
+      details: err?.message || 'Unknown error',
+      cause: err?.cause?.message || undefined,
+    });
   }
 });
 

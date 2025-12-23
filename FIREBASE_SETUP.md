@@ -29,8 +29,11 @@ npm install firebase
 2. Update `.env.local` with your Firebase credentials:
 
 ```env
-# Existing Gemini API Key
-GEMINI_API_KEY=your_gemini_api_key
+# AI Provider (OpenRouter)
+OPENROUTER_API_KEY=your_openrouter_api_key
+# Optional but recommended for OpenRouter routing/analytics
+# OPENROUTER_REFERRER=https://your-domain.com
+# OPENROUTER_TITLE=Your App Name
 
 # Firebase Configuration
 VITE_FIREBASE_API_KEY=your_firebase_api_key

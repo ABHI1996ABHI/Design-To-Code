@@ -1,5 +1,5 @@
 
-import { GEMINI_MODEL_VISION, SYSTEM_PROMPT } from '../constants';
+import { OPENROUTER_MODEL_VISION, SYSTEM_PROMPT } from '../constants';
 import { GeneratedCode } from '../types';
 
 async function optimizeImage(base64: string): Promise<string> {
@@ -113,7 +113,7 @@ export const generateCodeFromDesign = async (
         base64Image: optimizedBase64,
         userGuidance,
         previousCode,
-        model: GEMINI_MODEL_VISION,
+        model: OPENROUTER_MODEL_VISION,
         systemPrompt: SYSTEM_PROMPT,
       }),
     });
@@ -128,8 +128,8 @@ export const generateCodeFromDesign = async (
         // If not JSON, use the text as-is
       }
       
-      // Extract meaningful error message from Gemini API response
-      // Gemini API errors can be nested in different structures
+      // Extract meaningful error message from API response
+      // Some providers nest errors differently
       const geminiError = 
         errorDetails?.error?.message || 
         errorDetails?.error?.status || 
@@ -158,7 +158,7 @@ export const generateCodeFromDesign = async (
 
     return (await response.json()) as GeneratedCode;
   } catch (error: any) {
-    console.error('Gemini Generation Error:', error);
+    console.error('OpenRouter Generation Error:', error);
     throw error;
   }
 };
